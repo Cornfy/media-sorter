@@ -56,12 +56,14 @@ Run the program from your terminal, pointing it to the directory you want to org
 
 **Command-line Flags:**
 
-| Flag           | Description                                             | Default             |
-| -------------- | ------------------------------------------------------- | ------------------- |
-| `-dir`         | The target directory to process. (Required)             | `""`                |
-| `-yes`         | Bypass the interactive confirmation prompt.             | `false`             |
-| `-no-backup`   | Disable the default backup process.                     | `false`             |
-| `-backup-dir`  | Directory to store backups.                             | `"./media_backups"` |
+| Flag                | Description                                                      | Default             |
+| ------------------- | ---------------------------------------------------------------- | ------------------- |
+| `-dir`              | The target directory to process. (Required)                      | `""`                |
+| `-yes`              | Bypass the interactive confirmation prompt.                      | `false`             |
+| `-no-backup`        | Disable the default backup process.                              | `false`             |
+| `-backup-dir`       | Directory to store backups.                                      | `"./media_backups"` |
+| `-exiftool-path`    | Manually specify the full path to the exiftool executable.       | `""`                |
+| `-h`, `--help`      | Show this help message.                                          | `false`             |
 
 ### ⚙️ Configuration
 

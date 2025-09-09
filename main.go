@@ -71,17 +71,49 @@ func main() {
 	autoConfirm := flag.Bool("yes", false, "Bypass the confirmation prompt.")
 	noBackup := flag.Bool("no-backup", false, "Disable the default backup process.")
 	backupDir := flag.String("backup-dir", "./media_backups", "Directory to store backups.")
+	// --- NEW ---
+	// 为支持GUI调用，添加 --exiftool-path 标志。
+	exiftoolOverridePath := flag.String("exiftool-path", "", "Manually specify the full path to the exiftool executable.")
+	// -----------
 	flag.Parse()
 
 	// 3. 检查 exiftool 依赖
-	exiftoolFound := true
-	if _, err := exec.LookPath("exiftool"); err != nil {
-		exiftoolFound = false
+	// --- OLD ---
+	// exiftoolFound := true
+	// if _, err := exec.LookPath("exiftool"); err != nil {
+	// 	exiftoolFound = false
+	// 	ui.ShowExiftoolWarning()
+	// 	if !ui.RequestCriticalConfirmation("Please continue anyway!") {
+	// 		log.Println("Operation cancelled by user."); os.Exit(1)
+	// 	}
+	// }
+	// --- NEW ---
+	// 增强的依赖检查逻辑，优先使用 --exiftool-path 标志。
+	var exiftoolPath string
+	exiftoolFound := false
+	if *exiftoolOverridePath != "" {
+		if _, err := os.Stat(*exiftoolOverridePath); err == nil {
+			exiftoolPath = *exiftoolOverridePath
+			exiftoolFound = true
+			log.Printf("INFO: Using exiftool from user-provided path: %s", exiftoolPath)
+		} else {
+			log.Fatalf("FATAL: exiftool not found at the path provided by --exiftool-path: %s", *exiftoolOverridePath)
+		}
+	} else {
+		pathInSystem, err := exec.LookPath("exiftool")
+		if err == nil {
+			exiftoolPath = pathInSystem
+			exiftoolFound = true
+		}
+	}
+
+	if !exiftoolFound {
 		ui.ShowExiftoolWarning()
 		if !ui.RequestCriticalConfirmation("Please continue anyway!") {
 			log.Println("Operation cancelled by user."); os.Exit(1)
 		}
 	}
+	// -----------
 
 	// 4. 确定目标目录
 	if *targetDir == "" {
@@ -133,7 +165,12 @@ func main() {
 		if !isImage && !isVideo { return nil }
 		var prefix string
 		if isImage { prefix = cfg.ImagePrefix } else { prefix = cfg.VideoPrefix }
-		processFile(path, prefix, exiftoolFound, cfg, imageExtMap)
+		// --- OLD ---
+		// processFile(path, prefix, exiftoolFound, cfg, imageExtMap)
+		// --- NEW ---
+		// 将最终确定的 exiftoolPath 传递下去
+		processFile(path, prefix, exiftoolPath, cfg, imageExtMap)
+		// -----------
 		return nil
 	})
 
@@ -142,11 +179,21 @@ func main() {
 }
 
 // processFile 对单个文件执行完整的处理工作流：获取时间、重命名、同步时间戳和丰富元数据。
-func processFile(path, prefix string, exiftoolFound bool, cfg Config, imageExtMap map[string]bool) {
+// --- OLD ---
+// func processFile(path, prefix string, exiftoolFound bool, cfg Config, imageExtMap map[string]bool) {
+// --- NEW ---
+// 签名变更：接收 exiftoolPath 字符串，而不是 exiftoolFound 布尔值。
+func processFile(path, prefix string, exiftoolPath string, cfg Config, imageExtMap map[string]bool) {
+// -----------
 	fmt.Println("----------------------------------------")
 	fmt.Printf("Processing %s\n", filepath.Base(path))
 
-	authoritativeTime, source, isAuthoritative, err := getAuthoritativeTime(path, exiftoolFound, imageExtMap)
+	// --- OLD ---
+	// authoritativeTime, source, isAuthoritative, err := getAuthoritativeTime(path, exiftoolFound, imageExtMap)
+	// --- NEW ---
+	// 将 exiftoolPath 传递下去
+	authoritativeTime, source, isAuthoritative, err := getAuthoritativeTime(path, exiftoolPath, imageExtMap)
+	// -----------
 	if err != nil { log.Printf("  └─ ERROR: Could not get time for %s: %v\n", path, err); return }
 
 	newBaseName := generateNewFilename(authoritativeTime, prefix, path, isAuthoritative)
@@ -171,22 +218,42 @@ func processFile(path, prefix string, exiftoolFound bool, cfg Config, imageExtMa
 		fmt.Println("  └─ System file timestamp synced.")
 	}
 
-	if err := enrichMetadata(finalNewPath, authoritativeTime, exiftoolFound, cfg, imageExtMap); err != nil {
+	// --- OLD ---
+	// if err := enrichMetadata(finalNewPath, authoritativeTime, exiftoolFound, cfg, imageExtMap); err != nil {
+	// 	log.Printf("  └─ ERROR: Failed to enrich metadata: %v\n", err)
+	// } else if exiftoolFound {
+	// 	fmt.Println("  └─ Metadata checked and enriched.")
+	// }
+	// --- NEW ---
+	// 将 exiftoolPath 传递下去，并根据它是否为空来判断是否执行。
+	if err := enrichMetadata(finalNewPath, authoritativeTime, exiftoolPath, cfg, imageExtMap); err != nil {
 		log.Printf("  └─ ERROR: Failed to enrich metadata: %v\n", err)
-	} else if exiftoolFound {
+	} else if exiftoolPath != "" {
 		fmt.Println("  └─ Metadata checked and enriched.")
 	}
+	// -----------
 }
 
 // getAuthoritativeTime 从元数据（首选）或文件修改时间（备用）中查找最权威的时间戳。
-func getAuthoritativeTime(path string, exiftoolFound bool, imageExtMap map[string]bool) (time.Time, string, bool, error) {
-	if exiftoolFound {
+// --- OLD ---
+// func getAuthoritativeTime(path string, exiftoolFound bool, imageExtMap map[string]bool) (time.Time, string, bool, error) {
+// 	if exiftoolFound {
+// --- NEW ---
+// 签名变更：接收 exiftoolPath 字符串。
+func getAuthoritativeTime(path string, exiftoolPath string, imageExtMap map[string]bool) (time.Time, string, bool, error) {
+	if exiftoolPath != "" {
+// -----------
 		isImage := imageExtMap[strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))]
 		var timeTags []string
 		if isImage { timeTags = []string{"Composite:SubSecDateTimeOriginal", "DateTimeOriginal"} } else { timeTags = []string{"MediaCreateDate", "TrackCreateDate", "CreateDate"} }
 		for _, tag := range timeTags {
-			dateStr, err := getExifDate(path, tag)
-			if err != nil { continue } // 忽略读取单个标签的错误，继续尝试下一个
+			// --- OLD ---
+			// dateStr, err := getExifDate(path, tag)
+			// --- NEW ---
+			// 将 exiftoolPath 传递下去
+			dateStr, err := getExifDate(path, tag, exiftoolPath)
+			// -----------
+			if err != nil { continue }
 			if dateStr != "" {
 				if parsedTime, err := parseExifTime(dateStr); err == nil {
 					return parsedTime, "metadata (" + tag + ")", true, nil
@@ -202,8 +269,14 @@ func getAuthoritativeTime(path string, exiftoolFound bool, imageExtMap map[strin
 }
 
 // enrichMetadata 使用 exiftool 将权威时间戳写回到文件中缺失的元数据字段。
-func enrichMetadata(path string, t time.Time, exiftoolFound bool, cfg Config, imageExtMap map[string]bool) error {
-	if !exiftoolFound {
+// --- OLD ---
+// func enrichMetadata(path string, t time.Time, exiftoolFound bool, cfg Config, imageExtMap map[string]bool) error {
+// 	if !exiftoolFound {
+// --- NEW ---
+// 签名变更：接收 exiftoolPath 字符串。
+func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, imageExtMap map[string]bool) error {
+	if exiftoolPath == "" {
+// -----------
 		fmt.Println("  └─ Skipping metadata enrichment ('exiftool' not found).")
 		return nil
 	}
@@ -229,8 +302,13 @@ func enrichMetadata(path string, t time.Time, exiftoolFound bool, cfg Config, im
 	args = append(args, operations...)
 	args = append(args, "-common_args", "-q", "-m", "-overwrite_original")
 	args = append(args, path)
-	// log.Printf("  └─ DEBUG: Executing exiftool write command: exiftool %s", strings.Join(args, " ")) // Debug line commented out
-	cmd := exec.Command("exiftool", args...)
+	// log.Printf("  └─ DEBUG: Executing exiftool write command: exiftool %s", strings.Join(args, " "))
+	// --- OLD ---
+	// cmd := exec.Command("exiftool", args...)
+	// --- NEW ---
+	// 使用 exiftoolPath 变量来调用命令。
+	cmd := exec.Command(exiftoolPath, args...)
+	// -----------
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 2 {
@@ -298,8 +376,14 @@ func parseExifTime(dateStr string) (time.Time, error) {
 }
 
 // getExifDate 调用 exiftool 来读取一个指定文件的单个元数据标签。
-func getExifDate(filePath, tagName string) (string, error) {
-	cmd := exec.Command("exiftool", "-q", "-m", "-p", "$"+tagName, filePath)
+// --- OLD ---
+// func getExifDate(filePath, tagName string) (string, error) {
+// 	cmd := exec.Command("exiftool", "-q", "-m", "-p", "$"+tagName, filePath)
+// --- NEW ---
+// 签名变更：接收 exiftoolPath 字符串并用它来执行命令。
+func getExifDate(filePath, tagName string, exiftoolPath string) (string, error) {
+	cmd := exec.Command(exiftoolPath, "-q", "-m", "-p", "$"+tagName, filePath)
+// -----------
 	var out bytes.Buffer; cmd.Stdout = &out; cmd.Stderr = &out
 	if err := cmd.Run(); err != nil { return "", fmt.Errorf("exiftool read error: %v, output: %s", err, out.String()) }
 	dateStr := strings.TrimSpace(out.String())

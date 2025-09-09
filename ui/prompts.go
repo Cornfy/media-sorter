@@ -19,11 +19,12 @@ Arguments:
   TARGET_DIRECTORY  The directory to process. Can be specified with -dir flag or as the first argument.
 
 Options:
-  -dir string           The target directory to process. (Required)
-  -yes                  Bypass the interactive confirmation prompt.
-  -no-backup            Disable the default backup process.
-  -backup-dir string    Directory to store backups. (default "./media_backups")
-  --help, -h            Display this help message.
+  -dir string               The target directory to process. (Required)
+  -yes                      Bypass the interactive confirmation prompt.
+  -no-backup                Disable the default backup process.
+  -backup-dir string        Directory to store backups. (default "./media_backups")
+  -exiftool-path string     Manually specify the full path to the exiftool executable.
+  -h, --help                Display this help message.
 
 Workflow:
   1. The program first checks for the 'exiftool' dependency.
