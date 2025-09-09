@@ -71,10 +71,18 @@ func main() {
 	autoConfirm := flag.Bool("yes", false, "Bypass the confirmation prompt.")
 	noBackup := flag.Bool("no-backup", false, "Disable the default backup process.")
 	backupDir := flag.String("backup-dir", "./media_backups", "Directory to store backups.")
+
 	// --- NEW ---
 	// 为支持GUI调用，添加 --exiftool-path 标志。
 	exiftoolOverridePath := flag.String("exiftool-path", "", "Manually specify the full path to the exiftool executable.")
 	// -----------
+
+	// --- NEW ---
+	// 添加 -depth 标志来控制递归深度。
+	// 使用 -1 作为默认值，表示无限深度（即原始的递归行为）。
+	maxDepth := flag.Int("depth", -1, "Maximum depth for directory traversal. -1 for infinite, 0 for current directory only.")
+	// -----------
+
 	flag.Parse()
 
 	// 3. 检查 exiftool 依赖
@@ -118,9 +126,10 @@ func main() {
 	// 4. 确定目标目录
 	if *targetDir == "" {
 		if len(flag.Args()) > 0 { *targetDir = flag.Arg(0) } else {
-			log.Println("Error: Target directory not specified."); flag.Usage(); os.Exit(1)
+		 	log.Println("Error: Target directory not specified."); flag.Usage(); os.Exit(1)
 		}
 	}
+
 	absPath, err := filepath.Abs(*targetDir)
 	if err != nil { log.Fatalf("Error resolving absolute path: %v", err) }
 	if info, err := os.Stat(absPath); os.IsNotExist(err) || !info.IsDir() {
@@ -128,7 +137,11 @@ func main() {
 	}
 
 	// 5. 显示执行计划
-	ui.ShowExecutionPlan(absPath, !*noBackup, *backupDir, exiftoolFound, cfg.SupportedImageExtensions, cfg.SupportedVideoExtensions)
+	// --- OLD ---
+	// ui.ShowExecutionPlan(absPath, !*noBackup, *backupDir, exiftoolFound, cfg.SupportedImageExtensions, cfg.SupportedVideoExtensions)
+	// --- NEW ---
+	ui.ShowExecutionPlan(absPath, !*noBackup, *backupDir, exiftoolFound, cfg.SupportedImageExtensions, cfg.SupportedVideoExtensions, *maxDepth)
+	// -----------
 
 	// 6. 请求用户确认
 	if !*autoConfirm {
@@ -156,8 +169,38 @@ func main() {
 
 	// 8. 开始处理文件
 	fmt.Println("\nStarting file processing...")
+
+	// --- NEW ---
+	// 为了计算深度，需要在 WalkDir 的回调外部能访问到 clean 过的根路径。
+	// 这行代码是为深度检查做准备。
+	cleanAbsPath := filepath.Clean(absPath)
+	// -----------
+
 	err = filepath.WalkDir(absPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil { log.Printf("Error accessing path %q: %v\n", path, err); return err }
+
+		// --- NEW ---
+		// 深度控制逻辑：在处理任何文件或目录之前，首先检查深度。
+		if *maxDepth != -1 { // 仅当用户指定了深度时才执行检查
+			// 计算当前路径相对于根路径的深度
+			relPath, err := filepath.Rel(cleanAbsPath, path)
+			if err != nil { return err }
+
+			// 根目录 "." 的深度为 0。子目录的深度是路径分隔符的数量。
+			// 例： "level1" 深度为1, "level1/level2" 深度为2。
+			currentDepth := 0
+			if relPath != "." {
+				currentDepth = strings.Count(relPath, string(filepath.Separator)) + 1
+			}
+
+			// 如果当前项是一个目录，并且它的深度已经达到了不想进入的层级，则跳过。
+			// 要处理 depth=N 的目录下的文件，但不想进入 depth=N+1 的目录。
+			if d.IsDir() && currentDepth > *maxDepth {
+				return filepath.SkipDir
+			}
+		}
+		// -----------
+
 		if d.IsDir() { return nil }
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 		isImage := imageExtMap[ext]
@@ -311,9 +354,15 @@ func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, i
 	// -----------
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// --- OLD ---
+		// if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 2 {
+		// 	log.Printf("  └─ INFO: exiftool reported minor warnings but updated the file: %s", string(output)); return nil
+		// }
+		// --- NEW ---
 		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 2 {
-			log.Printf("  └─ INFO: exiftool reported minor warnings but updated the file: %s", string(output)); return nil
+			fmt.Printf("  └─ INFO: Metadata enriched (with minor warnings from exiftool).\n"); return nil
 		}
+		// -----------
 		return fmt.Errorf("exiftool write error: %v, output: %s", err, string(output))
 	}
 	return nil
@@ -328,8 +377,23 @@ func createBackup(sourceDir, backupDir string) error {
 	file, err := os.Create(backupFilepath); if err != nil { return fmt.Errorf("could not create backup file: %w", err) }; defer file.Close()
 	gw := gzip.NewWriter(file); defer gw.Close()
 	tw := tar.NewWriter(gw); defer tw.Close()
+
+	// --- NEW ---
+	// 为了进行排除检查，需要在 Walk 函数外部先获取备份目录的绝对路径。
+	absBackupDir, err := filepath.Abs(backupDir)
+	if err != nil {
+		return fmt.Errorf("could not resolve absolute path for backup directory: %w", err)
+	}
+	// -----------
 	return filepath.Walk(sourceDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil { return err }
+		// --- NEW ---
+		// 在处理任何文件或目录之前，首先检查它是否是需要被排除的备份目录。
+		if filepath.Clean(path) == filepath.Clean(absBackupDir) {
+			log.Printf("INFO: Skipping backup directory itself: %s", path)
+			return filepath.SkipDir // 如果是备份目录，则跳过整个目录及其内容。
+		}
+		// -----------
 		header, err := tar.FileInfoHeader(info, info.Name()); if err != nil { return err }
 		relPath, err := filepath.Rel(sourceDir, path); if err != nil { return err }
 		header.Name = relPath

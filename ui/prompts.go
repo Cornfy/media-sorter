@@ -24,6 +24,7 @@ Options:
   -no-backup                Disable the default backup process.
   -backup-dir string        Directory to store backups. (default "./media_backups")
   -exiftool-path string     Manually specify the full path to the exiftool executable.
+  -depth int                Maximum depth for directory traversal. -1 for infinite (default), 0 for current directory only.
   -h, --help                Display this help message.
 
 Workflow:
@@ -71,7 +72,11 @@ func ShowExiftoolWarning() {
 }
 
 // ShowExecutionPlan 打印一个动态生成的执行计划。
-func ShowExecutionPlan(targetDir string, backupEnabled bool, backupDir string, exiftoolFound bool, imageExts, videoExts []string) {
+// --- OLD ---
+// func ShowExecutionPlan(targetDir string, backupEnabled bool, backupDir string, exiftoolFound bool, imageExts, videoExts []string) {
+// --- NEW ---
+func ShowExecutionPlan(targetDir string, backupEnabled bool, backupDir string, exiftoolFound bool, imageExts, videoExts []string, maxDepth int) {
+// -----------
 	fmt.Println("======================================================================")
 	fmt.Println("                            EXECUTION PLAN                            ")
 	fmt.Println("======================================================================")
@@ -86,6 +91,22 @@ func ShowExecutionPlan(targetDir string, backupEnabled bool, backupDir string, e
 	if !exiftoolFound {
 		fmt.Println("  WARNING:          Operating in LIMITED MODE ('exiftool' not found).")
 	}
+
+	// --- NEW ---
+	// 根据 maxDepth 的值，显示关于目录遍历深度的信息。
+	switch {
+	case maxDepth == -1:
+		fmt.Println("  TRAVERSAL DEPTH:  Fully recursive (all subdirectories).")
+	case maxDepth == 0:
+		fmt.Println("  TRAVERSAL DEPTH:  Current directory only (non-recursive).")
+	case maxDepth > 0:
+		plural := "s"
+		if maxDepth == 1 {
+			plural = ""
+		}
+		fmt.Printf("  TRAVERSAL DEPTH:  Limited to %d level%s deep.\n", maxDepth, plural)
+	}
+	// -----------
 
 	fmt.Println("\n  PROCESSING:       Images & Videos")
 	if len(imageExts) > 0 {

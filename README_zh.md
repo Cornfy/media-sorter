@@ -63,6 +63,7 @@
 | `-no-backup`        | 禁用默认的备份流程。                                     | `false`             |
 | `-backup-dir`       | 用于存放备份文件的目录。                                 | `"./media_backups"` |
 | `-exiftool-path`    | 手动指定 exiftool 可执行文件的完整路径。                 | `""`                |
+| `-depth`            | 目录遍历的最大深度。`-1` 表示无限深（默认）。            | `-1`                |
 | `-h`, `--help`      | 显示此帮助信息。                                         | `false`             |
 
 ### ⚙️ 配置

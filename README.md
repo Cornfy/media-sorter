@@ -63,6 +63,7 @@ Run the program from your terminal, pointing it to the directory you want to org
 | `-no-backup`        | Disable the default backup process.                              | `false`             |
 | `-backup-dir`       | Directory to store backups.                                      | `"./media_backups"` |
 | `-exiftool-path`    | Manually specify the full path to the exiftool executable.       | `""`                |
+| `-depth`            | Max depth for directory traversal. `-1` for infinite (default).  | `-1`                |
 | `-h`, `--help`      | Show this help message.                                          | `false`             |
 
 ### ⚙️ Configuration
