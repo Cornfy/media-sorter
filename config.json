@@ -1,0 +1,19 @@
+{
+  "image_prefix": "IMG",
+  "video_prefix": "VID",
+  "target_timezone": "+08:00",
+  "supported_image_extensions": [
+    "jpg",
+    "jpeg",
+    "png",
+    "heic",
+    "webp",
+    "gif"
+  ],
+  "supported_video_extensions": [
+    "mp4",
+    "mov",
+    "avi",
+    "mkv"
+  ]
+}
