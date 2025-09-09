@@ -33,7 +33,7 @@
 ### 🚀 快速开始
 
 1.  **安装 `ExifTool`** (见上文)。
-2.  前往本仓库的 [**Releases 页面**](https://github.com/YOUR_USERNAME/go-media-sorter/releases)。
+2.  前往本仓库的 [**Releases 页面**](https://github.com/Cornfy/media-sorter/releases)。
 3.  下载适用于你操作系统的二进制文件（例如 `media-sorter_linux_amd64`）。
 4.  下载 `config.json` 配置文件。
 5.  将可执行文件和 `config.json` 放在同一个目录下。
@@ -88,8 +88,8 @@
 <summary><b>开发者：从源码构建</b></summary>
 
 1.  [安装 Go](https://go.dev/doc/install) (版本 1.18+)。
-2.  克隆本仓库: `git clone https://github.com/YOUR_USERNAME/go-media-sorter.git`
-3.  进入项目目录: `cd go-media-sorter`
+2.  克隆本仓库: `git clone https://github.com/Cornfy/media-sorter.git`
+3.  进入项目目录: `cd media-sorter`
 4.  构建优化后的二进制文件:
     ```bash
     go build -ldflags="-s -w"

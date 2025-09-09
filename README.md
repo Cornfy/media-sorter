@@ -33,7 +33,7 @@ This tool relies on the excellent **ExifTool** to read and write media metadata.
 ### 🚀 Getting Started
 
 1.  **Install `ExifTool`** (see above).
-2.  Go to the [**Releases Page**](https://github.com/YOUR_USERNAME/go-media-sorter/releases) of this repository.
+2.  Go to the [**Releases Page**](https://github.com/Cornfy/media-sorter/releases) of this repository.
 3.  Download the appropriate binary for your operating system (e.g., `media-sorter_linux_amd64`).
 4.  Download the `config.json` file.
 5.  Place both the executable and `config.json` in the same directory.
@@ -88,8 +88,8 @@ You can customize the tool's behavior by editing the `config.json` file.
 <summary><b>For Developers: Build from Source</b></summary>
 
 1.  [Install Go](https://go.dev/doc/install) (version 1.18+).
-2.  Clone the repository: `git clone https://github.com/YOUR_USERNAME/go-media-sorter.git`
-3.  Navigate into the directory: `cd go-media-sorter`
+2.  Clone the repository: `git clone https://github.com/Cornfy/media-sorter.git`
+3.  Navigate into the directory: `cd media-sorter`
 4.  Build the optimized binary:
     ```bash
     go build -ldflags="-s -w"
