@@ -59,11 +59,12 @@
 | 标志                | 描述                                                     | 默认值              |
 | ------------------- | -------------------------------------------------------- | ------------------- |
 | `-dir`              | 需要处理的目标目录。(必需)                               | `""`                |
-| `-yes`              | 跳过交互式确认提示。                                     | `false`             |
-| `-no-backup`        | 禁用默认的备份流程。                                     | `false`             |
+| `-depth`            | 目录遍历的最大深度。`-1` 表示无限深（默认）。            | `-1`                |
 | `-backup-dir`       | 用于存放备份文件的目录。                                 | `"./media_backups"` |
 | `-exiftool-path`    | 手动指定 exiftool 可执行文件的完整路径。                 | `""`                |
-| `-depth`            | 目录遍历的最大深度。`-1` 表示无限深（默认）。            | `-1`                |
+| `-no-backup`        | 禁用默认的备份流程。                                     | `false`             |
+| `-yes`              | 跳过交互式确认提示。                                     | `false`             |
+| `-v`, `--version`   | 显示程序版本号。                                         | `false`             |
 | `-h`, `--help`      | 显示此帮助信息。                                         | `false`             |
 
 ### ⚙️ 配置
@@ -91,10 +92,13 @@
 <summary><b>开发者：从源码构建</b></summary>
 
 1.  [安装 Go](https://go.dev/doc/install) (版本 1.18+)。
-2.  克隆本仓库: `git clone https://github.com/Cornfy/media-sorter.git`
-3.  进入项目目录: `cd media-sorter`
-4.  构建优化后的二进制文件:
+2.  克隆本仓库，并构建二进制文件:
     ```bash
+    # 克隆本仓库
+    git clone https://github.com/Cornfy/media-sorter.git
+    
+    # 进入项目目录并构建
+    cd media-sorter
     go build -ldflags="-s -w"
     ```
 </details>

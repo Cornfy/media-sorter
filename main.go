@@ -23,6 +23,10 @@ import (
 	"media-sorter/ui"
 )
 
+// version 将在编译时通过链接器（linker）进行设置。
+// 它的默认值 "development" 会在直接使用 `go run` 时显示。
+var version = "development"
+
 type Config struct {
 	ImagePrefix              string   `json:"image_prefix"`
 	VideoPrefix              string   `json:"video_prefix"`
@@ -83,7 +87,25 @@ func parseTimeZone(tzStr string) (*time.Location, error) {
 }
 
 func main() {
-	// 1. 加载配置
+	// 设置和解析命令行参数
+	flag.Usage = ui.ShowHelp
+	showVersion := flag.Bool("version", false, "Display the application version and exit.")
+	flag.BoolVar(showVersion, "v", false, "Display the application version and exit (shorthand).")
+	targetDir := flag.String("dir", "", "The target directory to process.")
+	maxDepth := flag.Int("depth", -1, "Maximum depth for directory traversal. -1 for infinite, 0 for current directory only.")
+	backupDir := flag.String("backup-dir", "./media_backups", "Directory to store backups.")
+	exiftoolOverridePath := flag.String("exiftool-path", "", "Manually specify the full path to the exiftool executable.")
+	noBackup := flag.Bool("no-backup", false, "Disable the default backup process.")
+	autoConfirm := flag.Bool("yes", false, "Bypass the confirmation prompt.")
+	flag.Parse()
+
+	// 如果用户使用了 --version 或 -v 标志，则打印版本号并立即退出。
+	if *showVersion {
+		fmt.Printf("Go Media Sorter version %s\n", version)
+		os.Exit(0) // 成功退出，不执行后续任何操作。
+	}
+
+	// 加载配置
 	cfg := loadConfig()
 	imageExtMap := sliceToMap(cfg.SupportedImageExtensions)
 	videoExtMap := sliceToMap(cfg.SupportedVideoExtensions)
@@ -91,24 +113,12 @@ func main() {
 	// REFACTORED: 立即解析时区，确立其权威地位
 	targetLocation, err := parseTimeZone(cfg.TargetTimezone)
 	if err != nil {
-		log.Fatalf("FATAL: Invalid 'target_timezone' in config.json: %v", err)
+		log.Fatalf("FATAL: Invalid 'target_timezone' in config.json: '%s'. Error: %v", cfg.TargetTimezone, err)
 	}
-	log.Printf("INFO: Authoritative timezone set to %s.", targetLocation)
+	log.Printf("INFO: Authoritative timezone set to '%s'.", cfg.TargetTimezone)
+	// log.Printf("DEBUG: targetLocation is %#v", targetLocation)
 	
-	// 2. 设置和解析命令行参数 (无变化)
-	// ... (命令行参数部分保持不变)
-	flag.Usage = ui.ShowHelp
-	targetDir := flag.String("dir", "", "The target directory to process.")
-	autoConfirm := flag.Bool("yes", false, "Bypass the confirmation prompt.")
-	noBackup := flag.Bool("no-backup", false, "Disable the default backup process.")
-	backupDir := flag.String("backup-dir", "./media_backups", "Directory to store backups.")
-	exiftoolOverridePath := flag.String("exiftool-path", "", "Manually specify the full path to the exiftool executable.")
-	maxDepth := flag.Int("depth", -1, "Maximum depth for directory traversal. -1 for infinite, 0 for current directory only.")
-	flag.Parse()
-
-
-	// 3. 检查 exiftool 依赖 (无变化)
-	// ... (依赖检查部分保持不变)
+	// 检查 exiftool 依赖
 	var exiftoolPath string
 	exiftoolFound := false
 	if *exiftoolOverridePath != "" {
@@ -134,8 +144,7 @@ func main() {
 		}
 	}
 
-	// 4. 确定目标目录 (无变化)
-	// ... (目录确定部分保持不变)
+	// 4. 确定目标目录
 	if *targetDir == "" {
 		if len(flag.Args()) > 0 { *targetDir = flag.Arg(0) } else {
 		 	log.Println("Error: Target directory not specified."); flag.Usage(); os.Exit(1)
@@ -148,18 +157,17 @@ func main() {
 		log.Fatalf("Error: Invalid target directory: %s", absPath)
 	}
 	
-	// 5. 显示执行计划 & 6. 请求用户确认 (无变化)
-	// ... (这部分保持不变)
+	// 5. 显示执行计划
 	ui.ShowExecutionPlan(absPath, !*noBackup, *backupDir, exiftoolFound, cfg.SupportedImageExtensions, cfg.SupportedVideoExtensions, *maxDepth)
 
+	// 6. 请求用户确认
 	if !*autoConfirm {
 		if !ui.RequestConfirmation() { log.Println("Operation cancelled by user."); os.Exit(0) }
 	} else {
 		fmt.Println("\nAutomation flag (--yes) detected. Proceeding automatically..."); time.Sleep(1 * time.Second)
 	}
 
-	// 7. 执行备份 (无变化)
-	// ... (备份部分保持不变)
+	// 7. 执行备份
 	if !*noBackup {
 		fmt.Println("\n--- Starting Backup ---")
 		if err := createBackup(absPath, *backupDir); err != nil {
@@ -178,7 +186,6 @@ func main() {
 
 	// 8. 开始处理文件 (有微小但关键的修改)
 	fmt.Println("\nStarting file processing...")
-
 	cleanAbsPath := filepath.Clean(absPath)
 
 	err = filepath.WalkDir(absPath, func(path string, d fs.DirEntry, err error) error {
@@ -210,7 +217,8 @@ func main() {
 	})
 
 	if err != nil { log.Fatalf("Error walking directory: %v", err) }
-	fmt.Println("\n========================================"); fmt.Println("All files have been processed!")
+	fmt.Println("\n========================================")
+	fmt.Println("All files have been processed!")
 }
 
 // CHANGE: 函数签名变更，接收权威的 targetLocation
@@ -315,45 +323,40 @@ func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, i
 		fmt.Println("  └─ Skipping metadata enrichment ('exiftool' not found).")
 		return nil
 	}
-	
+
 	var args []string
 	isImage := imageExtMap[strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))]
 
 	if isImage {
-		// === 图片处理逻辑 ===
-		// 1. 准备图片所需的所有时间组件，基于目标时区 `t`
+		// === 图片处理逻辑，分为三个独立的步骤 ===
+
+		// 无论时间精度如何，文件都应该有精确到秒的时间信息。
 		wallClockStr := t.Format("2006:01:02 15:04:05")
-		offsetStr := t.Format("-07:00")
-		subsecStr := fmt.Sprintf("%03d", t.Nanosecond()/1e6)
-
-		// 2. 构建单一的参数列表
-		// DateTimeOriginal (naive time)
 		args = append(args, "-if", `not $DateTimeOriginal or $DateTimeOriginal eq "0000:00:00 00:00:00"`, fmt.Sprintf("-DateTimeOriginal=%s", wallClockStr))
-		// SubSecTimeOriginal (milliseconds)
-		args = append(args, "-if", `not $SubSecTimeOriginal`, fmt.Sprintf("-SubSecTimeOriginal=%s", subsecStr))
-		// OffsetTimeOriginal (timezone)
-		args = append(args, "-if", `not $OffsetTimeOriginal`, fmt.Sprintf("-OffsetTimeOriginal=%s", offsetStr))
-
-		// CreateDate
 		args = append(args, "-if", `not $CreateDate or $CreateDate eq "0000:00:00 00:00:00"`, fmt.Sprintf("-CreateDate=%s", wallClockStr))
-		// SubSecTimeDigitized
-		args = append(args, "-if", `not $SubSecTimeDigitized`, fmt.Sprintf("-SubSecTimeDigitized=%s", subsecStr))
-		// OffsetTimeDigitized
-		args = append(args, "-if", `not $OffsetTimeDigitized`, fmt.Sprintf("-OffsetTimeDigitized=%s", offsetStr))
-
-		// ModifyDate
 		args = append(args, "-if", `not $ModifyDate or $ModifyDate eq "0000:00:00 00:00:00"`, fmt.Sprintf("-ModifyDate=%s", wallClockStr))
-		// SubSecTime
-		args = append(args, "-if", `not $SubSecTime`, fmt.Sprintf("-SubSecTime=%s", subsecStr))
-		// OffsetTime
+
+		// 时区为基础时间戳提供上下文，其存在与否与毫秒无关。
+		offsetStr := t.Format("-07:00")
+		args = append(args, "-if", `not $OffsetTimeOriginal`, fmt.Sprintf("-OffsetTimeOriginal=%s", offsetStr))
+		args = append(args, "-if", `not $OffsetTimeDigitized`, fmt.Sprintf("-OffsetTimeDigitized=%s", offsetStr))
 		args = append(args, "-if", `not $OffsetTime`, fmt.Sprintf("-OffsetTime=%s", offsetStr))
+
+		// 只有当四舍五入后的毫秒数大于零时，写入才有意义。
+		roundedMs := (t.Nanosecond() + 500_000) / 1_000_000
+		if roundedMs > 0 {
+			if roundedMs >= 1000 { roundedMs = 999 }
+			subsecStr := fmt.Sprintf("%03d", roundedMs)
+			args = append(args, "-if", `not $SubSecTimeOriginal`, fmt.Sprintf("-SubSecTimeOriginal=%s", subsecStr))
+			args = append(args, "-if", `not $SubSecTimeDigitized`, fmt.Sprintf("-SubSecTimeDigitized=%s", subsecStr))
+			args = append(args, "-if", `not $SubSecTime`, fmt.Sprintf("-SubSecTime=%s", subsecStr))
+		}
 
 	} else {
 		// === 视频处理逻辑 ===
 		// 1. 准备视频所需的 UTC 时间字符串
 		utcTimeStr := t.UTC().Format("2006:01:02 15:04:05")
-		offsetUTC := "+00:00"
-		
+
 		// 2. 定义要写入的 QuickTime 标签
 		videoTags := []string{
 			"MediaCreateDate", "TrackCreateDate", "CreateDate",
@@ -368,25 +371,20 @@ func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, i
 			arg := fmt.Sprintf("-%s=%s", fullTagName, utcTimeStr)
 			args = append(args, "-if", condition, arg)
 		}
-		
-		// 额外为视频也尝试写入 OffsetTimeOriginal (如果不存在)，以增加兼容性
-		args = append(args, "-if", `not $QuickTime:OffsetTimeOriginal`, fmt.Sprintf("-OffsetTimeOriginal=%s", offsetUTC))
 	}
-	
-	// 如果没有任何需要执行的操作，则直接返回
-	if len(args) == 0 {
-		return nil
-	}
-	
+
+	// 如果没有任何需要执行的操作（例如所有元数据都已存在），则直接返回
+	if len(args) == 0 { return nil }
+
 	// 添加通用参数，然后是文件路径
 	args = append(args, "-common_args", "-q", "-m", "-overwrite_original", path)
-	
+
 	// 执行单次 exiftool 调用
 	cmd := exec.Command(exiftoolPath, args...)
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		// ExitCode 2 通常表示 "Minor errors or warnings", 例如文件已经包含了部分信息但仍成功更新。可以安全地忽略。
+		// ExitCode 2 通常表示 "Minor errors or warnings", 例如文件已包含了部分信息但仍成功更新。可以安全地忽略。
 		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 2 {
 			fmt.Printf("  └─ INFO: Metadata enriched (with minor warnings from exiftool).\n")
 			return nil
@@ -467,7 +465,10 @@ func getUniquePath(path string) (string, error) {
 func generateNewFilename(t time.Time, prefix, originalPath string, isAuthoritative bool) string {
 	ext, baseTime := filepath.Ext(originalPath), t.Format("20060102_150405")
 	if isAuthoritative {
-		if ms := t.Nanosecond() / 1e6; ms > 0 { return fmt.Sprintf("%s_%s_%03d%s", prefix, baseTime, ms, ext) }
+		// 增加半毫秒，以实现四舍五入
+		roundedMs := (t.Nanosecond() + 500000) / 1000000
+		if roundedMs >= 1000 { roundedMs = 999 }
+		return fmt.Sprintf("%s_%s_%03d%s", prefix, baseTime, roundedMs, ext)
 	}
 	return fmt.Sprintf("%s_%s%s", prefix, baseTime, ext)
 }

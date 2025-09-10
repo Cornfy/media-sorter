@@ -59,11 +59,12 @@ Run the program from your terminal, pointing it to the directory you want to org
 | Flag                | Description                                                      | Default             |
 | ------------------- | ---------------------------------------------------------------- | ------------------- |
 | `-dir`              | The target directory to process. (Required)                      | `""`                |
-| `-yes`              | Bypass the interactive confirmation prompt.                      | `false`             |
-| `-no-backup`        | Disable the default backup process.                              | `false`             |
+| `-depth`            | Max depth for directory traversal. `-1` for infinite (default).  | `-1`                |
 | `-backup-dir`       | Directory to store backups.                                      | `"./media_backups"` |
 | `-exiftool-path`    | Manually specify the full path to the exiftool executable.       | `""`                |
-| `-depth`            | Max depth for directory traversal. `-1` for infinite (default).  | `-1`                |
+| `-no-backup`        | Disable the default backup process.                              | `false`             |
+| `-yes`              | Bypass the interactive confirmation prompt.                      | `false`             |
+| `-v`, `--version`   | Show the application message.                                    | `false`             |
 | `-h`, `--help`      | Show this help message.                                          | `false`             |
 
 ### ⚙️ Configuration
@@ -91,10 +92,13 @@ You can customize the tool's behavior by editing the `config.json` file.
 <summary><b>For Developers: Build from Source</b></summary>
 
 1.  [Install Go](https://go.dev/doc/install) (version 1.18+).
-2.  Clone the repository: `git clone https://github.com/Cornfy/media-sorter.git`
-3.  Navigate into the directory: `cd media-sorter`
-4.  Build the optimized binary:
+2.  Clone the repository, and build the optimized binary:
     ```bash
+    # Clone the repository
+    git clone https://github.com/Cornfy/media-sorter.git
+
+    # navigate into the directory, and build it
+    cd media-sorter
     go build -ldflags="-s -w"
     ```
 </details>

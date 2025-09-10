@@ -11,26 +11,35 @@ import (
 )
 
 // helpText 保存了完整的帮助信息，使用反引号以保留格式。
-const helpText = `Usage: media-sorter -dir <TARGET_DIRECTORY> [options]
-
+const helpText = `
+----------------------------------------------------------------------
 Intelligently organizes media files in a specified directory with a confirmation step.
+
+Usage:
+  media-sorter -dir <TARGET_DIRECTORY> [options]
 
 Arguments:
   TARGET_DIRECTORY  The directory to process. Can be specified with -dir flag or as the first argument.
 
 Options:
+
   -dir string               The target directory to process. (Required)
-  -yes                      Bypass the interactive confirmation prompt.
-  -no-backup                Disable the default backup process.
+  -depth int                Maximum depth for directory traversal. -1 for infinite (default), 0 for current directory only.
+
   -backup-dir string        Directory to store backups. (default "./media_backups")
   -exiftool-path string     Manually specify the full path to the exiftool executable.
-  -depth int                Maximum depth for directory traversal. -1 for infinite (default), 0 for current directory only.
-  -h, --help                Display this help message.
 
+  -no-backup                Disable the default backup process.
+  -yes                      Bypass the interactive confirmation prompt.
+
+  -v, --version             Display the application version and exit.
+  -h, --help                Display this help message.
+----------------------------------------------------------------------
 Workflow:
   1. The program first checks for the 'exiftool' dependency.
   2. It then displays an 'Execution Plan' detailing what it will do.
   3. Finally, it requires you to type 'yes' to proceed, preventing accidental runs.
+----------------------------------------------------------------------
 `
 
 // exiftoolWarningText 保存了 exiftool 缺失时的严重警告信息。

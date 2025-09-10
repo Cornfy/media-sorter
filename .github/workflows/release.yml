@@ -8,6 +8,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: # 允许手动触发
 
 # 3. 权限设置：允许 Workflow 向你的 Release 写入文件
 permissions:
@@ -16,7 +17,6 @@ permissions:
 # 4. 定义一个名为 'build' 的任务 (Job)
 jobs:
   build:
-    # 任务运行的环境：最新的 Ubuntu 系统
     runs-on: ubuntu-latest
 
     # 任务的步骤
@@ -25,6 +25,8 @@ jobs:
       # 使用 'actions/checkout@v4' 这个官方的 action 来获取你的源代码
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 确保获取所有历史和标签，以便 git describe 正常工作
 
       # 步骤二：设置 Go 环境
       # 使用 'actions/setup-go@v5' 这个官方的 action 来安装 Go
@@ -33,27 +35,38 @@ jobs:
         with:
           go-version: '1.22' # 你可以指定一个 Go 版本
 
-      # 步骤三：执行交叉编译
-      # 'run' 关键字后面可以跟任何 shell 命令
+      # 步骤三：【新增】获取 Git Tag 作为版本号
+      - name: Get Git Tag for Version
+        id: get_version # 为这个步骤设置一个ID，以便后续引用其输出
+        run: |
+          TAG_VERSION=$(basename "${GITHUB_REF}")
+          echo "Detected tag version: $TAG_VERSION"
+          echo "APP_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          
+
+      # 步骤四：执行交叉编译
       - name: Build cross-platform binaries
         run: |
           # 创建一个用于存放构建产物的目录
           mkdir builds
+          
+          # 定义 ldflags，现在包含了动态版本号注入
+          # $APP_VERSION 是我们从上一步骤的环境变量中获取的版本号
+          LDFLAGS="-s -w -X 'main.version=${APP_VERSION}'"
+
           # Linux
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o builds/media-sorter_linux_amd64
+          GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o builds/media-sorter_linux_amd64
           # Windows
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o builds/media-sorter_windows_amd64.exe
+          GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o builds/media-sorter_windows_amd64.exe
           # macOS (Intel)
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o builds/media-sorter_macos_amd64
+          GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o builds/media-sorter_macos_amd64
           # macOS (Apple Silicon)
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o builds/media-sorter_macos_arm64
+          GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o builds/media-sorter_macos_arm64
           # 将配置文件也复制进去
           cp config.json builds/
 
-      # 步骤四：创建 Release 并上传构建产物
-      # 使用 'softprops/action-gh-release@v1' 这个非常流行的第三方 action
+      # 步骤五：创建 Release 并上传构建产物
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
-          # 将 builds/ 目录下的所有文件都作为发布资产上传
           files: builds/*
