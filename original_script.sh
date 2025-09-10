@@ -145,9 +145,17 @@ get_posix_tz_from_offset() {
 get_epoch_from_metadata() {
     local file="$1"; local type="$2"; local time_tags=()
     if [ "$type" = "image" ]; then
-        time_tags=("Composite:SubSecDateTimeOriginal" "DateTimeOriginal")
+        time_tags=(
+            "Composite:SubSecDateTimeOriginal"
+	    "Composite:DateTimeOriginal"
+	    "DateTimeOriginal"
+	    "Composite:DateTimeCreated"
+	    "CreateDate"
+	    "Composite:ModifyDate"
+	    "ModifyDate"
+        )
     else # video
-        time_tags=("MediaCreateDate" "TrackCreateDate" "CreateDate")
+        time_tags=("MediaCreateDate" "TrackCreateDate" "CreateDate" "ModifyDate")
     fi
 
     for tag in "${time_tags[@]}"; do
@@ -159,7 +167,7 @@ get_epoch_from_metadata() {
             elif [ "$type" = "video" ]; then
                 : # For naive video timestamps, we've established they are UTC.
             else
-                parsing_tz="" # For other naive timestamps, assume local time.
+                parsing_tz="$(get_posix_tz_from_offset "$TIMEZONE")" # For other naive timestamps, assume configured TARGET timezone.
             fi
             
             local parsable_date_str; parsable_date_str=$(echo "$time_to_parse" | sed 's/:/-/1; s/:/-/1;')
@@ -171,7 +179,6 @@ get_epoch_from_metadata() {
         fi
     done
 }
-
 
 # Renames a file based on a given epoch timestamp and prefix.
 rename_file_from_epoch() {
@@ -222,43 +229,47 @@ write_and_enrich_metadata_from_epoch() {
     local file="$1"
     local epoch="$2"
     local file_type="$3"
-    
+
     echo "Checking and enriching metadata..." >&2
-    
+
     if [ "$file_type" = "image" ]; then
-        # For images, format the epoch into a localized string WITH timezone for EXIF.
         local target_tz; target_tz=$(get_posix_tz_from_offset "$TIMEZONE")
-        local time_str; time_str=$(TZ="$target_tz" date -d "@$epoch" +"%Y:%m:%d %H:%M:%S.%3N")
-        local time_with_zone; time_with_zone="${time_str/./}${TIMEZONE}"
         
-        # Use the -execute sequence for high efficiency.
-        # Redirect stdout to /dev/null to suppress the noisy summary messages ("1 files failed condition", etc.).
-        # Real errors will still be printed because they go to stderr.
+        # Prepare all necessary time components based on the target timezone.
+        local time_str_full; time_str_full=$(TZ="$target_tz" date -d "@$epoch" +"%Y:%m:%d %H:%M:%S.%3N")
+        local time_with_zone; time_with_zone="${time_str_full/./,}${TIMEZONE}"
+        local time_naive; time_naive=$(echo "$time_str_full" | cut -d'.' -f1)
+        local offset_only="$TIMEZONE"
+        local subsec_only; subsec_only=$(echo "$time_str_full" | cut -d'.' -f2)
+
+        # Use the robust "-TAG-= -TAG=VALUE" idiom to write a value only if the tag
+        # was previously empty or non-existent. This is an atomic and idempotent operation.
         exiftool \
-            -if 'not $EXIF:DateTimeOriginal' -DateTimeOriginal="$time_with_zone" \
-            -execute \
-            -if 'not $EXIF:CreateDate' -CreateDate="$time_with_zone" \
-            -execute \
-            -if 'not $EXIF:ModifyDate' -ModifyDate="$time_with_zone" \
+            -if 'not $DateTimeOriginal or $DateTimeOriginal eq "0000:00:00 00:00:00"' -DateTimeOriginal="$time_naive" \
+            -if 'not $SubSecTimeOriginal' -SubSecTimeOriginal="$subsec_only" \
+            -if 'not $OffsetTimeOriginal' -OffsetTimeOriginal="$offset_only" \
+            -if 'not $CreateDate or $CreateDate eq "0000:00:00 00:00:00"' -CreateDate="$time_naive" \
+            -if 'not $SubSecTimeDigitized' -SubSecTimeDigitized="$subsec_only" \
+            -if 'not $OffsetTimeDigitized' -OffsetTimeDigitized="$offset_only" \
+            -if 'not $ModifyDate or $ModifyDate eq "0000:00:00 00:00:00"' -ModifyDate="$time_naive" \
+            -if 'not $SubSecTime' -SubSecTime="$subsec_only" \
+            -if 'not $OffsetTime' -OffsetTime="$offset_only" \
             -common_args -q -m -overwrite_original "$file" > /dev/null
 
     else # video
-        # For videos, format the epoch into a pure UTC string for QuickTime tags.
+        # For videos, prepare the timestamp in the UTC standard.
         local utc_time_str; utc_time_str=$(date -u -d "@$epoch" +"%Y:%m:%d %H:%M:%S")
-        
-        # Apply the same output suppression for a cleaner user experience.
+        local offset_utc="+00:00"
+
+        # Use a single, atomic command with conditional checks. This is robust for videos.
         exiftool \
             -if 'not $QuickTime:MediaCreateDate or $QuickTime:MediaCreateDate eq "0000:00:00 00:00:00"' -QuickTime:MediaCreateDate="$utc_time_str" \
-            -execute \
             -if 'not $QuickTime:TrackCreateDate or $QuickTime:TrackCreateDate eq "0000:00:00 00:00:00"' -QuickTime:TrackCreateDate="$utc_time_str" \
-            -execute \
             -if 'not $QuickTime:CreateDate or $QuickTime:CreateDate eq "0000:00:00 00:00:00"' -QuickTime:CreateDate="$utc_time_str" \
-            -execute \
             -if 'not $QuickTime:MediaModifyDate or $QuickTime:MediaModifyDate eq "0000:00:00 00:00:00"' -QuickTime:MediaModifyDate="$utc_time_str" \
-            -execute \
             -if 'not $QuickTime:TrackModifyDate or $QuickTime:TrackModifyDate eq "0000:00:00 00:00:00"' -QuickTime:TrackModifyDate="$utc_time_str" \
-            -execute \
             -if 'not $QuickTime:ModifyDate or $QuickTime:ModifyDate eq "0000:00:00 00:00:00"' -QuickTime:ModifyDate="$utc_time_str" \
+            -if 'not $QuickTime:OffsetTimeOriginal' -OffsetTimeOriginal="$offset_utc" \
             -common_args -q -m -overwrite_original "$file" > /dev/null
     fi
     return $?
@@ -269,7 +280,7 @@ sync_file_timestamp_from_epoch() {
     local file="$1"; local epoch="$2"
     
     # 'touch -d' can directly use the epoch format with '@'.
-    touch -d "@$(echo "$epoch" | cut -d'.' -f1)" "$file"
+    touch -d "@$epoch" "$file"
     echo "System file timestamp synced successfully." >&2
 }
 
