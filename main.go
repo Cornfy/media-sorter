@@ -1,5 +1,3 @@
-// main.go (Refactored for v1.1.0 - The Timezone-Smart Update)
-
 package main
 
 import (
@@ -45,20 +43,18 @@ func loadConfig() Config {
 	}
 	configFilename := "config.json"
 	absConfigPath, err := filepath.Abs(configFilename)
-	if err != nil {
-		absConfigPath = configFilename
-	}
+	if err != nil {	absConfigPath = configFilename }
 	configFile, err := os.ReadFile(configFilename)
 	if err != nil {
-		log.Printf("INFO: %s not found, using default settings.", absConfigPath)
+		log.Printf("INFO: Config file %s not found, using default settings.", absConfigPath)
 		return defaultConfig
 	}
 	var userConfig Config
 	if err := json.Unmarshal(configFile, &userConfig); err != nil {
-		log.Printf("WARNING: Could not parse %s (%v), using default settings.", absConfigPath, err)
+		log.Printf("WARNING: Could not parse config file %s (%v), using default settings.", absConfigPath, err)
 		return defaultConfig
 	}
-	log.Printf("INFO: Loaded settings from %s.", absConfigPath)
+	log.Printf("INFO: Settings loaded from %s.", absConfigPath)
 	return userConfig
 }
 
@@ -112,11 +108,9 @@ func main() {
 
 	// REFACTORED: 立即解析时区，确立其权威地位
 	targetLocation, err := parseTimeZone(cfg.TargetTimezone)
-	if err != nil {
-		log.Fatalf("FATAL: Invalid 'target_timezone' in config.json: '%s'. Error: %v", cfg.TargetTimezone, err)
-	}
-	log.Printf("INFO: Authoritative timezone set to '%s'.", cfg.TargetTimezone)
-	// log.Printf("DEBUG: targetLocation is %#v", targetLocation)
+	if err != nil {	log.Fatalf("FATAL: Invalid 'target_timezone' in config.json: '%s'. Error: %v", cfg.TargetTimezone, err) }
+	log.Printf("INFO: Target timezone set to '%s'.", cfg.TargetTimezone)
+	// log.Printf("DEBUG: targetLocation is %#v", targetLocation)	// 调试日志，生产环境应禁用
 	
 	// 检查 exiftool 依赖
 	var exiftoolPath string
@@ -144,37 +138,41 @@ func main() {
 		}
 	}
 
-	// 4. 确定目标目录
+	// 确定目标目录
 	if *targetDir == "" {
-		if len(flag.Args()) > 0 { *targetDir = flag.Arg(0) } else {
-		 	log.Println("Error: Target directory not specified."); flag.Usage(); os.Exit(1)
+		if len(flag.Args()) > 0 { 
+			*targetDir = flag.Arg(0) 
+		} else {
+		 	log.Println("Error: No target directory specified."); flag.Usage(); os.Exit(1)
 		}
 	}
 
 	absPath, err := filepath.Abs(*targetDir)
-	if err != nil { log.Fatalf("Error resolving absolute path: %v", err) }
+	if err != nil {
+		log.Fatalf("ERROR: Failed to resolve absolute path for target directory '%s': %v", *targetDir, err)
+	}
 	if info, err := os.Stat(absPath); os.IsNotExist(err) || !info.IsDir() {
-		log.Fatalf("Error: Invalid target directory: %s", absPath)
+		log.Fatalf("ERROR: Invalid target directory: '%s'. Directory does not exist or is not a directory.", absPath)
 	}
 	
-	// 5. 显示执行计划
+	// 显示执行计划
 	ui.ShowExecutionPlan(absPath, !*noBackup, *backupDir, exiftoolFound, cfg.SupportedImageExtensions, cfg.SupportedVideoExtensions, *maxDepth)
 
-	// 6. 请求用户确认
+	// 请求用户确认
 	if !*autoConfirm {
 		if !ui.RequestConfirmation() { log.Println("Operation cancelled by user."); os.Exit(0) }
 	} else {
 		fmt.Println("\nAutomation flag (--yes) detected. Proceeding automatically..."); time.Sleep(1 * time.Second)
 	}
 
-	// 7. 执行备份
+	// 执行备份
 	if !*noBackup {
 		fmt.Println("\n--- Starting Backup ---")
 		if err := createBackup(absPath, *backupDir); err != nil {
 			if *autoConfirm {
 				log.Fatalf("ERROR: Backup failed in automated mode (--yes). Aborting operation.")
 			} else {
-				if !ui.RequestContinueOnFailure(fmt.Sprintf("ERROR: Backup failed! (%v)", err)) {
+				if !ui.RequestContinueOnFailure(fmt.Sprintf("ERROR: Backup failed! (%v). Continue anyway?", err)) {
 					log.Println("Operation cancelled."); os.Exit(1)
 				}
 			}
@@ -184,12 +182,12 @@ func main() {
 		fmt.Println("-----------------------")
 	}
 
-	// 8. 开始处理文件 (有微小但关键的修改)
+	// 开始处理文件 (有微小但关键的修改)
 	fmt.Println("\nStarting file processing...")
 	cleanAbsPath := filepath.Clean(absPath)
 
 	err = filepath.WalkDir(absPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil { log.Printf("Error accessing path %q: %v\n", path, err); return err }
+		if err != nil { log.Printf("Error: Failed to access path '%s': %v\n", path, err); return err }
 		if *maxDepth != -1 {
 			relPath, err := filepath.Rel(cleanAbsPath, path)
 			if err != nil { return err }
@@ -216,7 +214,7 @@ func main() {
 		return nil
 	})
 
-	if err != nil { log.Fatalf("Error walking directory: %v", err) }
+	if err != nil { log.Fatalf("File processing failed during directory traversal: %v", err) }
 	fmt.Println("\n========================================")
 	fmt.Println("All files have been processed!")
 }
@@ -224,11 +222,11 @@ func main() {
 // CHANGE: 函数签名变更，接收权威的 targetLocation
 func processFile(path, prefix, exiftoolPath string, cfg Config, imageExtMap map[string]bool, targetLocation *time.Location) {
 	fmt.Println("----------------------------------------")
-	fmt.Printf("Processing %s\n", filepath.Base(path))
+	fmt.Printf("Processing files: '%s'\n", filepath.Base(path))
 
 	// CHANGE: 将 targetLocation 传递给 getAuthoritativeTime
 	authoritativeTime, source, isAuthoritative, err := getAuthoritativeTime(path, exiftoolPath, imageExtMap, targetLocation)
-	if err != nil { log.Printf("  └─ ERROR: Could not get time for %s: %v\n", path, err); return }
+	if err != nil { log.Printf("  └─ ERROR: Failed to determine authoritative time for %s: %v\n", path, err); return }
 
 	// REFACTORED: 这是整个智能方案的核心！将绝对时刻标准化到目标时区。
 	standardizedTime := authoritativeTime.In(targetLocation)
@@ -241,27 +239,51 @@ func processFile(path, prefix, exiftoolPath string, cfg Config, imageExtMap map[
 	if newBaseName != currentBaseName {
 		idealNewPath := filepath.Join(filepath.Dir(path), newBaseName)
 		finalNewPath, err = getUniquePath(idealNewPath)
-		if err != nil { log.Printf("  └─ ERROR: Could not generate unique path for %s: %v\n", idealNewPath, err); return }
+		if err != nil { log.Printf("  └─ ERROR: Failed to create unique new path for %s: %v\n", idealNewPath, err); return }
 		if err := os.Rename(path, finalNewPath); err != nil {
-			log.Printf("  └─ ERROR: Failed to rename to '%s': %v\n", filepath.Base(finalNewPath), err); return
+			log.Printf("  └─ ERROR: Failed to  rename the file to '%s': %v\n", filepath.Base(finalNewPath), err); return
 		}
-		fmt.Printf("  └─ Renamed to '%s' (Source: %s)\n", filepath.Base(finalNewPath), source)
+		fmt.Printf("  └─ INFO: Renamed to '%s' (Source: %s)\n", filepath.Base(finalNewPath), source)
 	} else {
-		fmt.Printf("  └─ Filename is already perfect. (Source: %s)\n", source)
+		fmt.Printf("  └─ INFO: Filename matches standard. No rename performed. (Source: %s)\n", source)
 	}
 
 	if err := enrichMetadata(finalNewPath, standardizedTime, exiftoolPath, cfg, imageExtMap); err != nil {
 		log.Printf("  └─ ERROR: Failed to enrich metadata: %v\n", err)
 	} else if exiftoolPath != "" {
-		fmt.Println("  └─ Metadata checked and enriched.")
+		fmt.Println("  └─ INFO: Metadata checked and enriched.")
 	}
 
 	if err := syncFileTimestamp(finalNewPath, standardizedTime); err != nil {
-		log.Printf("  └─ ERROR: Failed to sync file timestamp: %v\n", err)
+		log.Printf("  └─ ERROR: Failed to sync file system modification time (mtime)for '%s': %v\n", filepath.Base(finalNewPath), err)
 	} else {
-		fmt.Println("  └─ System file timestamp synced.")
+		fmt.Println("  └─ INFO: File system modification time (mtime) synced to authoritative time.")
 	}
 }
+
+// getExifDate 调用 exiftool 来读取一个指定文件的单个元数据标签。
+func getExifDate(filePath, tagName string, exiftoolPath string) (string, error) {
+	args := []string{ "-charset", "UTF8", "-q", "-m", "-p", "$" + tagName, filePath	}
+	cmd := exec.Command(exiftoolPath, args...)
+	
+	// 使用两个独立的 bytes.Buffer 分别捕获 stdout 和 stderr。
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	// log.Printf("DEBUG: Executing exiftool command: %s %s", exiftoolPath, strings.Join(cmd.Args[1:], " "))
+
+	if err := cmd.Run(); err != nil {
+		fullOutput := strings.TrimSpace(stdoutBuf.String()) + "\n" + strings.TrimSpace(stderrBuf.String())
+		return "", fmt.Errorf("exiftool read error for tag '%s' on file '%s': %w, output: %s", tagName, filepath.Base(filePath), err, fullOutput)
+	}
+	
+	dateStr := strings.TrimSpace(stdoutBuf.String())	
+	if dateStr == "" || dateStr == "0000:00:00 00:00:00" { return "", nil }
+	return dateStr, nil
+}
+
 
 // REFACTORED: 完全重写的 getAuthoritativeTime 函数，实现了智能解析逻辑。
 func getAuthoritativeTime(path string, exiftoolPath string, imageExtMap map[string]bool, targetLocation *time.Location) (time.Time, string, bool, error) {
@@ -279,7 +301,13 @@ func getAuthoritativeTime(path string, exiftoolPath string, imageExtMap map[stri
 
 		for _, tag := range timeTags {
 			dateStr, err := getExifDate(path, tag, exiftoolPath)
-			if err != nil || dateStr == "" {
+			if err != nil {
+				// 如果 exiftool 报告错误（如文件编码问题），记录但不中断查找其他标签
+				// log.Printf("  └─ DEBUG: ExifTool failed to read tag '%s' for '%s': %v", tag, filepath.Base(path), err)	// 显示调试日志，生产环境可选择禁用
+				continue
+			}
+			if dateStr == "" {
+				// dateStr 为空说明标签不存在或无意义
 				continue
 			}
 
@@ -289,15 +317,15 @@ func getAuthoritativeTime(path string, exiftoolPath string, imageExtMap map[stri
 
 			// 检查是否是带时区的格式
 			if strings.Contains(dateStr, "+") || strings.Contains(dateStr, "-") || strings.HasSuffix(dateStr, "Z") {
-				parsedTime, parseErr = parseExifTime(dateStr, time.UTC) // 初始解析 location 不重要
+				parsedTime, parseErr = parseExifTime(dateStr, time.UTC) // 初始解析，已包含时区，使用UTC解析，得到绝对时刻
 			} else {
 				// 无时区信息，根据文件类型应用规则
 				var assumedLocation *time.Location
 				if isImage {
-					// 规则 B: 图片的无时区时间，假定为目标时区
+					// 图片的无时区时间，假定为目标时区
 					assumedLocation = targetLocation
 				} else {
-					// 规则 C: 视频的无时区时间，假定为 UTC
+					// 视频的无时区时间，假定为 UTC
 					assumedLocation = time.UTC
 				}
 				parsedTime, parseErr = parseExifTime(dateStr, assumedLocation)
@@ -306,25 +334,28 @@ func getAuthoritativeTime(path string, exiftoolPath string, imageExtMap map[stri
 			if parseErr == nil {
 				return parsedTime, "metadata (" + tag + ")", true, nil
 			}
+			// log.Printf("  └─ DEBUG: Failed to parse metadata time '%s' (tag: %s) for '%s': %v", dateStr, tag, filepath.Base(path), parseErr)	// 调试日志，生产环境应禁用
 		}
-		fmt.Println("  └─ INFO: No valid metadata tag found in file.")
+		fmt.Println("  └─ INFO: No relevant metadata found.")
+	} else {
+		fmt.Printf("  └─ INFO: ExifTool not found. Cannot read metadata.") // 修正提示语
 	}
 
-	// 规则 D: 回退到文件 mtime
-	fmt.Println("  └─ Falling back to file modification time (mtime).")
+	// 回退到文件 mtime
+	fmt.Println("  └─ INFO: Falling back to file modification time (mtime).")
 	fileInfo, err := os.Stat(path)
-	if err != nil { return time.Time{}, "", false, fmt.Errorf("failed to stat file for mtime: %w", err) }
+	if err != nil { return time.Time{}, "", false, fmt.Errorf("failed to stat file '%s' for mtime: %w", filepath.Base(path), err) }
 	return fileInfo.ModTime(), "mtime", false, nil
 }
 
 // REFACTORED & ENHANCED: 函数签名和逻辑变更，通过单词调用写入更全面的元数据标签。
 func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, imageExtMap map[string]bool) error {
 	if exiftoolPath == "" {
-		fmt.Println("  └─ Skipping metadata enrichment ('exiftool' not found).")
+		fmt.Println("  └─ INFO: Skipping metadata enrichment ('exiftool' not found).")
 		return nil
 	}
 
-	var args []string
+	var args []string = []string{"-charset", "UTF8"}
 	isImage := imageExtMap[strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))]
 
 	if isImage {
@@ -354,16 +385,16 @@ func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, i
 
 	} else {
 		// === 视频处理逻辑 ===
-		// 1. 准备视频所需的 UTC 时间字符串
+		// 准备视频所需的 UTC 时间字符串
 		utcTimeStr := t.UTC().Format("2006:01:02 15:04:05")
 
-		// 2. 定义要写入的 QuickTime 标签
+		// 定义要写入的 QuickTime 标签
 		videoTags := []string{
 			"MediaCreateDate", "TrackCreateDate", "CreateDate",
 			"MediaModifyDate", "TrackModifyDate", "ModifyDate",
 		}
 
-		// 3. 构建单一的参数列表
+		// 构建单一的参数列表
 		for _, tag := range videoTags {
 			// QuickTime 标签需要明确指定分组
 			fullTagName := fmt.Sprintf("QuickTime:%s", tag)
@@ -373,8 +404,9 @@ func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, i
 		}
 	}
 
-	// 如果没有任何需要执行的操作（例如所有元数据都已存在），则直接返回
-	if len(args) == 0 { return nil }
+	// 如果除了 -charset 参数之外，没有任何需要执行的操作，则直接返回
+	// 这里需要判断 args 的长度是否只有 -charset 的两个参数，则直接返回
+	if len(args) == 2 { return nil }
 
 	// 添加通用参数，然后是文件路径
 	args = append(args, "-common_args", "-q", "-m", "-overwrite_original", path)
@@ -386,10 +418,10 @@ func enrichMetadata(path string, t time.Time, exiftoolPath string, cfg Config, i
 	if err != nil {
 		// ExitCode 2 通常表示 "Minor errors or warnings", 例如文件已包含了部分信息但仍成功更新。可以安全地忽略。
 		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 2 {
-			fmt.Printf("  └─ INFO: Metadata enriched (with minor warnings from exiftool).\n")
+			fmt.Printf("  └─ INFO: Metadata enriched (ExifTool reported minor warnings).\n")
 			return nil
 		}
-		return fmt.Errorf("exiftool write error: %v, output: %s", err, string(output))
+		return fmt.Errorf("exiftool write error for '%s': %v, output: %s", filepath.Base(path), err, string(output))
 	}
 
 	return nil
@@ -413,9 +445,6 @@ func parseExifTime(dateStr string, location *time.Location) (time.Time, error) {
 	}
 	return time.Time{}, fmt.Errorf("could not parse date: %s", dateStr)
 }
-
-
-// --- 以下函数保持不变 ---
 
 func createBackup(sourceDir, backupDir string) error {
 	if err := os.MkdirAll(backupDir, 0755); err != nil { return fmt.Errorf("could not create backup directory: %w", err) }
@@ -467,17 +496,11 @@ func generateNewFilename(t time.Time, prefix, originalPath string, isAuthoritati
 	if isAuthoritative {
 		// 增加半毫秒，以实现四舍五入
 		roundedMs := (t.Nanosecond() + 500000) / 1000000
-		if roundedMs >= 1000 { roundedMs = 999 }
-		return fmt.Sprintf("%s_%s_%03d%s", prefix, baseTime, roundedMs, ext)
+		if roundedMs > 0 { 
+			if roundedMs >= 1000 { roundedMs = 999 }
+			return fmt.Sprintf("%s_%s_%03d%s", prefix, baseTime, roundedMs, ext)
+		}
 	}
 	return fmt.Sprintf("%s_%s%s", prefix, baseTime, ext)
 }
 
-func getExifDate(filePath, tagName string, exiftoolPath string) (string, error) {
-	cmd := exec.Command(exiftoolPath, "-q", "-m", "-p", "$"+tagName, filePath)
-	var out bytes.Buffer; cmd.Stdout = &out; cmd.Stderr = &out
-	if err := cmd.Run(); err != nil { return "", fmt.Errorf("exiftool read error: %v, output: %s", err, out.String()) }
-	dateStr := strings.TrimSpace(out.String())
-	if dateStr == "" || dateStr == "0000:00:00 00:00:00" { return "", nil }
-	return dateStr, nil
-}
