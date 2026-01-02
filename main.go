@@ -232,7 +232,23 @@ func processFile(path, prefix, exiftoolPath string, cfg Config, imageExtMap map[
 	standardizedTime := authoritativeTime.In(targetLocation)
 	
 	// 从现在起，所有操作都使用 standardizedTime
+	// --- OLD ---
+	// 直接使用原始的 isAuthoritative
+	// newBaseName := generateNewFilename(standardizedTime, prefix, path, isAuthoritative)
+	// --- NEW ---
+	// 逻辑修正：幂等性修复，“预支”权威时间身份。
+	// 修正目的：确保单次运行即可将具备有效毫秒 mtime 的文件提升至亚秒级文件名标准
+	// 
+	// 如果当前来源不是 EXIF (即 source != "EXIF")，但存在 exiftoolPath (稍后会补录元数据)，
+	// 我们检查 standardizedTime 的毫秒是否有效。
+	// 如果有效，将从 mtime (回退) 中获得的时间 "提升" 为权威时间。
+	if !isAuthoritative && exiftoolPath != "" {
+		roundedMs := (standardizedTime.Nanosecond() + 500_000) / 1_000_000
+		if roundedMs > 0 { isAuthoritative = true }
+	}
+	// 此时传入的 isAuthoritative 可能是被我们刚刚 “提升” 过的
 	newBaseName := generateNewFilename(standardizedTime, prefix, path, isAuthoritative)
+	// -----------
 	currentBaseName := filepath.Base(path)
 	finalNewPath := path
 
