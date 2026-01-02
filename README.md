@@ -97,8 +97,12 @@ You can customize the tool's behavior by editing the `config.json` file.
     # Clone the repository
     git clone https://github.com/Cornfy/media-sorter.git
 
-    # navigate into the directory, and build it
+    # navigate into the directory
     cd media-sorter
+
+    # and build it
     go build -ldflags="-s -w"
+    # or you can use the Makefile to build
+    make help
     ```
 </details>

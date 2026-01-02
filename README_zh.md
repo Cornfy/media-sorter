@@ -97,8 +97,12 @@
     # 克隆本仓库
     git clone https://github.com/Cornfy/media-sorter.git
     
-    # 进入项目目录并构建
+    # 进入项目目录
     cd media-sorter
+
+    # 并构建
     go build -ldflags="-s -w"
+    # 或者你可以使用 Makefile 来构建
+    make help
     ```
 </details>
